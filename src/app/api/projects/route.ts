@@ -6,6 +6,8 @@ import {
 } from "@/lib/schemas/research";
 import { detectLanguage } from "@/lib/i18n/detectLanguage";
 import { AppError } from "@/lib/server/errors";
+import { getConfig } from "@/lib/server/env";
+import { requireAccess } from "@/lib/server/adminAuth";
 import { handleError, jsonOk } from "@/lib/server/http";
 import {
   listProjectSummaries,
@@ -16,8 +18,9 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    requireAccess(request, getConfig());
     const projects = await listProjectSummaries();
     return jsonOk({ projects });
   } catch (error) {
@@ -27,6 +30,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    requireAccess(request, getConfig());
+
     let body: unknown;
     try {
       body = await request.json();
@@ -64,6 +69,16 @@ export async function POST(request: Request) {
       stopReason: null,
       stopMessage: null,
       reportMarkdown: null,
+      plan: null,
+      searchedQueries: [],
+      round: 0,
+      nextAgent: "planner",
+      analysedSourceIds: [],
+      evidence: [],
+      discardedEvidence: 0,
+      critique: null,
+      audit: null,
+      lockedUntil: null,
     };
 
     const saved = await saveProject(project);
