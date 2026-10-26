@@ -1,6 +1,7 @@
 "use client";
 
 import { useApp } from "@/components/providers/AppProvider";
+import { AccessCodeCard } from "@/components/dashboard/AccessCodeCard";
 import { ResearchForm } from "@/components/dashboard/ResearchForm";
 import { BudgetCard } from "@/components/dashboard/BudgetCard";
 import { AgentPipeline } from "@/components/dashboard/AgentPipeline";
@@ -17,6 +18,8 @@ export function DashboardView() {
           {t.hero.subtitle}
         </p>
       </section>
+
+      <AccessCodeCard />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
