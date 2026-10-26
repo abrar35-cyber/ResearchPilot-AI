@@ -54,11 +54,58 @@ export const SourceSchema = z.object({
   year: z.number().int().nullable(),
   provider: z.enum(["duckduckgo", "openalex", "crossref"]),
   snippet: z.string().nullable(),
+  // Longer page text read by the Evidence Analyst (only for short web snippets).
+  excerpt: z.string().nullable().optional(),
   retrievedAt: z.string(),
   verification: z.enum(["unverified", "verified", "failed"]),
   verificationNote: z.string().nullable(),
 });
 export type Source = z.infer<typeof SourceSchema>;
+
+export const PlanSchema = z.object({
+  scope: z.string(),
+  subQuestions: z.array(z.string()),
+  searchQueries: z.array(z.string()),
+});
+export type Plan = z.infer<typeof PlanSchema>;
+
+// Every evidence item points to a source and holds a quote that was checked
+// to appear in that source's text.
+export const EvidenceItemSchema = z.object({
+  id: z.string(),
+  sourceId: z.string(),
+  claim: z.string(),
+  quote: z.string(),
+});
+export type EvidenceItem = z.infer<typeof EvidenceItemSchema>;
+
+export const FindingSchema = z.object({
+  text: z.string(),
+  evidenceIds: z.array(z.string()),
+});
+export type Finding = z.infer<typeof FindingSchema>;
+
+export const CritiqueSchema = z.object({
+  agreements: z.array(FindingSchema),
+  conflicts: z.array(FindingSchema),
+  weaknesses: z.array(z.string()),
+  gaps: z.array(z.string()),
+  suggestedQueries: z.array(z.string()),
+  confidence: z.enum(["low", "medium", "high"]),
+});
+export type Critique = z.infer<typeof CritiqueSchema>;
+
+export const AuditSchema = z.object({
+  checkedAt: z.string(),
+  sourcesChecked: z.number().int().nonnegative(),
+  verified: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  unverified: z.number().int().nonnegative(),
+  evidenceChecked: z.number().int().nonnegative(),
+  evidenceRemoved: z.number().int().nonnegative(),
+  failedSourceIds: z.array(z.string()),
+});
+export type Audit = z.infer<typeof AuditSchema>;
 
 export const ProjectSchema = z.object({
   id: z.string(),
@@ -78,6 +125,17 @@ export const ProjectSchema = z.object({
   stopReason: StopReasonSchema.nullable(),
   stopMessage: z.string().nullable(),
   reportMarkdown: z.string().nullable(),
+  // Orchestrator state
+  plan: PlanSchema.nullable().default(null),
+  searchedQueries: z.array(z.string()).default([]),
+  round: z.number().int().min(0).max(RESEARCH_DEFAULTS.maxExtraRounds).default(0),
+  nextAgent: AgentNameSchema.nullable().default(null),
+  analysedSourceIds: z.array(z.string()).default([]),
+  evidence: z.array(EvidenceItemSchema).default([]),
+  discardedEvidence: z.number().int().nonnegative().default(0),
+  critique: CritiqueSchema.nullable().default(null),
+  audit: AuditSchema.nullable().default(null),
+  lockedUntil: z.string().nullable().default(null),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
