@@ -22,6 +22,11 @@ interface AppContextValue {
   setUiLanguage: (code: LanguageCode) => void;
   reportLanguage: LanguageCode;
   setReportLanguage: (code: LanguageCode) => void;
+  /** The access code (ADMIN_TOKEN). Empty string means "not set". */
+  accessCode: string;
+  setAccessCode: (code: string) => void;
+  /** True once saved settings were read from the browser. */
+  ready: boolean;
   t: Dictionary;
   dir: "ltr" | "rtl";
 }
@@ -44,10 +49,19 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+function removeStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
   const [uiLanguage, setUiLanguageState] = useState<LanguageCode>("en");
   const [reportLanguage, setReportLanguageState] = useState<LanguageCode>("en");
+  const [accessCode, setAccessCodeState] = useState("");
   const [ready, setReady] = useState(false);
 
   // Load saved settings once, after the first render.
@@ -59,6 +73,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const savedReport = readStorage(STORAGE_KEYS.reportLanguage);
     if (isLanguageCode(savedReport)) setReportLanguageState(savedReport);
+
+    setAccessCodeState(readStorage(STORAGE_KEYS.accessCode) ?? "");
 
     setReady(true);
   }, []);
@@ -89,6 +105,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeStorage(STORAGE_KEYS.reportLanguage, code);
   }, []);
 
+  const setAccessCode = useCallback((code: string) => {
+    const trimmed = code.trim();
+    setAccessCodeState(trimmed);
+    if (trimmed === "") removeStorage(STORAGE_KEYS.accessCode);
+    else writeStorage(STORAGE_KEYS.accessCode, trimmed);
+  }, []);
+
   const value = useMemo<AppContextValue>(
     () => ({
       theme,
@@ -97,10 +120,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUiLanguage,
       reportLanguage,
       setReportLanguage,
+      accessCode,
+      setAccessCode,
+      ready,
       t: translations[uiLanguage],
       dir,
     }),
-    [theme, toggleTheme, uiLanguage, setUiLanguage, reportLanguage, setReportLanguage, dir]
+    [
+      theme,
+      toggleTheme,
+      uiLanguage,
+      setUiLanguage,
+      reportLanguage,
+      setReportLanguage,
+      accessCode,
+      setAccessCode,
+      ready,
+      dir,
+    ]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
