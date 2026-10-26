@@ -7,6 +7,7 @@ export interface ServerConfig {
   aiCallTimeoutMs: number;
   budget: BudgetLimits;
   adminToken: string | null;
+  openAlexApiKey: string | null;
   contactEmail: string | null;
   blobs: { siteId: string; token: string } | null;
   warnings: string[];
@@ -55,6 +56,7 @@ export function getConfig(): ServerConfig {
       reportReservePercent: readInt("BUDGET_REPORT_RESERVE_PERCENT", 25, 0, 50, warnings),
     },
     adminToken: readString("ADMIN_TOKEN"),
+    openAlexApiKey: readString("OPENALEX_API_KEY"),
     contactEmail: readString("CONTACT_EMAIL"),
     blobs: siteId && blobsToken ? { siteId, token: blobsToken } : null,
     warnings,
