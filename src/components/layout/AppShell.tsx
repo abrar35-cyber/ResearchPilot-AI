@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Compass, FilePlus2, History, LayoutDashboard, Menu, X } from "lucide-react";
 import { useApp } from "@/components/providers/AppProvider";
 import { ThemeToggle } from "@/components/controls/ThemeToggle";
@@ -11,13 +12,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const links = [
-    { href: "#dashboard", label: t.nav.dashboard, Icon: LayoutDashboard },
-    { href: "#new", label: t.nav.newResearch, Icon: FilePlus2 },
-    { href: "#history", label: t.nav.history, Icon: History },
+    { href: "/#dashboard", label: t.nav.dashboard, Icon: LayoutDashboard },
+    { href: "/#new", label: t.nav.newResearch, Icon: FilePlus2 },
+    { href: "/#history", label: t.nav.history, Icon: History },
   ];
 
   const brand = (
-    <div className="flex items-center gap-3 px-5 py-4">
+    <Link href="/" className="flex items-center gap-3 px-5 py-4">
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white">
         <Compass className="h-5 w-5" aria-hidden />
       </div>
@@ -27,13 +28,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400">V2</div>
       </div>
-    </div>
+    </Link>
   );
 
   const nav = (
     <nav className="flex flex-col gap-1 px-3 pb-4">
       {links.map(({ href, label, Icon }) => (
-        <a
+        <Link
           key={href}
           href={href}
           onClick={() => setMenuOpen(false)}
@@ -41,7 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <Icon className="h-5 w-5" aria-hidden />
           {label}
-        </a>
+        </Link>
       ))}
     </nav>
   );
