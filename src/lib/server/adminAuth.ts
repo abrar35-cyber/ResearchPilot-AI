@@ -22,3 +22,22 @@ export function requireAdmin(url: URL, config: ServerConfig): void {
     throw new AppError("forbidden", "Invalid token.", 403);
   }
 }
+
+/**
+ * Protects the research API. ADMIN_TOKEN doubles as the app's access code.
+ * The app sends it in the "x-access-code" header.
+ */
+export function requireAccess(request: Request, config: ServerConfig): void {
+  if (!config.adminToken) {
+    throw new AppError(
+      "access_not_configured",
+      "Set ADMIN_TOKEN in Netlify environment variables (and redeploy). It is also your access code for the app.",
+      503
+    );
+  }
+  const url = new URL(request.url);
+  const supplied = request.headers.get("x-access-code") ?? url.searchParams.get("token") ?? "";
+  if (!safeEqual(supplied, config.adminToken)) {
+    throw new AppError("unauthorized", "The access code is missing or incorrect.", 401);
+  }
+}
