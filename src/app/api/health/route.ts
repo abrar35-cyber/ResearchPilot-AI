@@ -1,6 +1,6 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { AppError } from "@/lib/server/errors";
 import { getConfig, type ServerConfig } from "@/lib/server/env";
+import { requireAdmin } from "@/lib/server/adminAuth";
 import { BudgetManager } from "@/lib/server/budget/budgetManager";
 import { groqChat } from "@/lib/server/ai/groqClient";
 import { openStore, withStorageErrors } from "@/lib/server/storage/blobs";
@@ -8,26 +8,6 @@ import { handleError, jsonOk } from "@/lib/server/http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function safeEqual(a: string, b: string): boolean {
-  const hashA = createHash("sha256").update(a).digest();
-  const hashB = createHash("sha256").update(b).digest();
-  return timingSafeEqual(hashA, hashB);
-}
-
-function requireAdmin(url: URL, config: ServerConfig): void {
-  if (!config.adminToken) {
-    throw new AppError(
-      "admin_disabled",
-      "Set ADMIN_TOKEN in Netlify environment variables (and redeploy) to enable this check.",
-      403
-    );
-  }
-  const token = url.searchParams.get("token") ?? "";
-  if (!safeEqual(token, config.adminToken)) {
-    throw new AppError("forbidden", "Invalid token.", 403);
-  }
-}
 
 async function checkStorage(): Promise<Record<string, unknown>> {
   try {
@@ -80,6 +60,7 @@ export async function GET(request: Request) {
       config: {
         groqConfigured: Boolean(config.groqApiKey),
         groqModel: config.groqModel,
+        openAlexConfigured: Boolean(config.openAlexApiKey),
         adminTokenConfigured: Boolean(config.adminToken),
         manualBlobsConfig: Boolean(config.blobs),
         aiCallTimeoutMs: config.aiCallTimeoutMs,
