@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { useApp } from "@/components/providers/AppProvider";
 import { LanguageSelect } from "@/components/controls/LanguageSelect";
+import { apiRequest, describeError } from "@/lib/client/api";
+import { MAX_QUESTION_LENGTH, MIN_QUESTION_LENGTH, RESEARCH_DEFAULTS } from "@/lib/constants";
 import { detectLanguage } from "@/lib/i18n/detectLanguage";
 import { LANGUAGES } from "@/lib/i18n/languages";
-import { MAX_QUESTION_LENGTH, RESEARCH_DEFAULTS } from "@/lib/constants";
+import type { Project } from "@/lib/schemas/research";
 
 function Chip({ label, value }: { label: string; value: string }) {
   return (
@@ -18,12 +21,47 @@ function Chip({ label, value }: { label: string; value: string }) {
 }
 
 export function ResearchForm() {
-  const { t, reportLanguage, setReportLanguage } = useApp();
+  const router = useRouter();
+  const { t, reportLanguage, setReportLanguage, accessCode } = useApp();
   const [question, setQuestion] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const detected = useMemo(() => detectLanguage(question), [question]);
   const detectedLabel =
     detected === "unknown" ? t.form.unknown : LANGUAGES[detected].label;
+
+  async function start() {
+    setError(null);
+    const trimmed = question.trim();
+
+    if (accessCode === "") {
+      setError(t.access.missing);
+      return;
+    }
+    if (trimmed.length < MIN_QUESTION_LENGTH) {
+      setError(t.form.tooShort);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const data = await apiRequest<{ project: Project }>("/api/projects", accessCode, {
+        method: "POST",
+        body: {
+          question: trimmed,
+          reportLanguage,
+          maxSources: RESEARCH_DEFAULTS.maxSources,
+          maxExtraRounds: RESEARCH_DEFAULTS.maxExtraRounds,
+        },
+      });
+      // The project page starts the research automatically because of ?run=1.
+      router.push(`/project/${data.project.id}?run=1`);
+    } catch (caught) {
+      setError(describeError(caught, t));
+      setBusy(false);
+    }
+  }
 
   return (
     <section id="new" className="card scroll-mt-20">
@@ -70,11 +108,15 @@ export function ResearchForm() {
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button type="button" disabled className="btn-primary">
+        <button type="button" onClick={start} disabled={busy} className="btn-primary">
           <Rocket className="h-4 w-4" aria-hidden />
-          {t.form.start}
+          {busy ? t.form.starting : t.form.start}
         </button>
-        <p className="text-xs text-slate-500 dark:text-slate-400">{t.form.previewNote}</p>
+        {error && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        )}
       </div>
     </section>
   );
