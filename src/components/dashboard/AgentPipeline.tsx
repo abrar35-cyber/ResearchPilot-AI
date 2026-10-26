@@ -1,24 +1,8 @@
 "use client";
 
-import {
-  ListChecks,
-  Microscope,
-  PenLine,
-  Scale,
-  Search,
-  ShieldCheck,
-  Workflow,
-} from "lucide-react";
+import { Workflow } from "lucide-react";
+import { AGENT_META } from "@/components/agents/agentMeta";
 import { useApp } from "@/components/providers/AppProvider";
-
-const AGENTS = [
-  { key: "planner", name: "Planner", Icon: ListChecks },
-  { key: "discovery", name: "Discovery", Icon: Search },
-  { key: "evidence", name: "Evidence Analyst", Icon: Microscope },
-  { key: "critical", name: "Critical Analyst", Icon: Scale },
-  { key: "verification", name: "Verification Auditor", Icon: ShieldCheck },
-  { key: "writer", name: "Research Writer", Icon: PenLine },
-] as const;
 
 export function AgentPipeline() {
   const { t } = useApp();
@@ -39,7 +23,7 @@ export function AgentPipeline() {
       </div>
 
       <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {AGENTS.map(({ key, name, Icon }, index) => (
+        {AGENT_META.map(({ key, name, Icon }, index) => (
           <li
             key={key}
             className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 dark:border-slate-700"
