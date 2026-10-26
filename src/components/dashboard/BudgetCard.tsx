@@ -2,16 +2,23 @@
 
 import { Gauge } from "lucide-react";
 import { useApp } from "@/components/providers/AppProvider";
-import { BUDGET_DISPLAY_DEFAULTS as LIMITS } from "@/lib/constants";
+import { BUDGET_DISPLAY_DEFAULTS } from "@/lib/constants";
 
-interface Usage {
+export interface BudgetUsageView {
   aiCalls: number;
   tokens: number;
   seconds: number;
   retries: number;
 }
 
-const EMPTY_USAGE: Usage = { aiCalls: 0, tokens: 0, seconds: 0, retries: 0 };
+export interface BudgetLimitsView {
+  maxAiCalls: number;
+  maxTokens: number;
+  maxSeconds: number;
+  maxRetries: number;
+}
+
+const EMPTY_USAGE: BudgetUsageView = { aiCalls: 0, tokens: 0, seconds: 0, retries: 0 };
 
 function Row({
   label,
@@ -31,7 +38,7 @@ function Row({
         <span className="text-slate-600 dark:text-slate-300">{label}</span>
         <span className="tabular-nums text-slate-500 dark:text-slate-400">
           <span dir="ltr">
-            {used.toLocaleString("en-US")} / {max.toLocaleString("en-US")}
+            {Math.round(used).toLocaleString("en-US")} / {max.toLocaleString("en-US")}
           </span>
           {suffix ? ` ${suffix}` : ""}
         </span>
@@ -53,7 +60,13 @@ function Row({
   );
 }
 
-export function BudgetCard({ usage = EMPTY_USAGE }: { usage?: Usage }) {
+export function BudgetCard({
+  usage = EMPTY_USAGE,
+  limits = BUDGET_DISPLAY_DEFAULTS,
+}: {
+  usage?: BudgetUsageView;
+  limits?: BudgetLimitsView;
+}) {
   const { t } = useApp();
 
   return (
@@ -69,15 +82,15 @@ export function BudgetCard({ usage = EMPTY_USAGE }: { usage?: Usage }) {
       </div>
 
       <div className="space-y-4">
-        <Row label={t.budget.aiCalls} used={usage.aiCalls} max={LIMITS.maxAiCalls} />
-        <Row label={t.budget.tokens} used={usage.tokens} max={LIMITS.maxTokens} />
+        <Row label={t.budget.aiCalls} used={usage.aiCalls} max={limits.maxAiCalls} />
+        <Row label={t.budget.tokens} used={usage.tokens} max={limits.maxTokens} />
         <Row
           label={t.budget.time}
           used={usage.seconds}
-          max={LIMITS.maxSeconds}
+          max={limits.maxSeconds}
           suffix={t.budget.seconds}
         />
-        <Row label={t.budget.retries} used={usage.retries} max={LIMITS.maxRetries} />
+        <Row label={t.budget.retries} used={usage.retries} max={limits.maxRetries} />
       </div>
 
       <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">{t.budget.note}</p>
