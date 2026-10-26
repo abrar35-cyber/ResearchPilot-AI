@@ -1,0 +1,9 @@
+# Netlify detects Next.js automatically and installs its Next.js runtime.
+# Do not set a "publish" directory.
+
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_TELEMETRY_DISABLED = "1"
