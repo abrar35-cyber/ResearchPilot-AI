@@ -23,17 +23,17 @@ function readErrorBody(data: unknown): { code?: string; message?: string } | nul
   };
 }
 
-/** Calls our own API with the access code. Throws ApiError on any problem. */
+/** Calls our own API. The anonymous visitor id keeps each visitor's history separate. */
 export async function apiRequest<T>(
   path: string,
-  accessCode: string,
+  visitorId: string,
   init: { method?: "GET" | "POST"; body?: unknown } = {}
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       method: init.method ?? "GET",
-      headers: { "Content-Type": "application/json", "x-access-code": accessCode },
+      headers: { "Content-Type": "application/json", "x-visitor-id": visitorId },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       cache: "no-store",
     });
