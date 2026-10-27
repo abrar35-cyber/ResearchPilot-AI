@@ -136,6 +136,7 @@ export const ProjectSchema = z.object({
   critique: CritiqueSchema.nullable().default(null),
   audit: AuditSchema.nullable().default(null),
   lockedUntil: z.string().nullable().default(null),
+  ownerId: z.string().default(""),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
