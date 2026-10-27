@@ -5,10 +5,10 @@ import {
   type StepRecord,
 } from "@/lib/schemas/research";
 import { detectLanguage } from "@/lib/i18n/detectLanguage";
+import { requireVisitor } from "@/lib/server/adminAuth";
 import { AppError } from "@/lib/server/errors";
-import { getConfig } from "@/lib/server/env";
-import { requireAccess } from "@/lib/server/adminAuth";
 import { handleError, jsonOk } from "@/lib/server/http";
+import { reserveRun } from "@/lib/server/limits";
 import {
   listProjectSummaries,
   newProjectId,
@@ -18,10 +18,11 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Lists only the calling visitor's own projects.
 export async function GET(request: Request) {
   try {
-    requireAccess(request, getConfig());
-    const projects = await listProjectSummaries();
+    const ownerId = requireVisitor(request);
+    const projects = await listProjectSummaries(ownerId);
     return jsonOk({ projects });
   } catch (error) {
     return handleError(error);
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    requireAccess(request, getConfig());
+    const ownerId = requireVisitor(request);
 
     let body: unknown;
     try {
@@ -40,6 +41,10 @@ export async function POST(request: Request) {
     }
 
     const input = CreateProjectInputSchema.parse(body);
+
+    // Daily limits protect the shared free quotas. Counted only for valid requests.
+    await reserveRun(request);
+
     const detected = detectLanguage(input.question);
     const now = new Date().toISOString();
 
@@ -79,6 +84,7 @@ export async function POST(request: Request) {
       critique: null,
       audit: null,
       lockedUntil: null,
+      ownerId,
     };
 
     const saved = await saveProject(project);
