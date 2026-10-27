@@ -100,7 +100,7 @@ export async function runResearchWriter(ctx: AgentContext): Promise<AgentOutcome
       refToSource.set(n, item.sourceId);
     }
   }
-  const promptEvidence = usable.filter((e) => sourceToRef.has(e.sourceId));
+  const promptEvidence = usable.filter((e) => sourceToRef.has(e.sourceId)).slice(0, 40);
   const evidenceLines = promptEvidence.map((e) => `[S${sourceToRef.get(e.sourceId)}] ${e.claim}`).join("\n");
 
   const subQuestions = (project.plan?.subQuestions ?? []).map((q) => `- ${q}`).join("\n");
