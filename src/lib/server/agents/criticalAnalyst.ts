@@ -4,7 +4,7 @@ import { groqChat, parseModelJson } from "@/lib/server/ai/groqClient";
 import { truncate } from "@/lib/server/search/normalize";
 import { languageInstruction, type AgentContext, type AgentOutcome } from "@/lib/server/agents/context";
 
-const MAX_EVIDENCE_IN_PROMPT = 60;
+const MAX_EVIDENCE_IN_PROMPT = 40;
 
 const FindingOutput = z.object({
   text: z.string(),
