@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pause, Play, RotateCcw, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Download, Pause, Play, Printer, RotateCcw, TriangleAlert } from "lucide-react";
 import {
   BudgetCard,
   type BudgetLimitsView,
@@ -13,6 +13,8 @@ import { SourceList } from "@/components/project/SourceList";
 import { StatusBadge } from "@/components/project/StatusBadge";
 import { StepList } from "@/components/project/StepList";
 import { ApiError, apiRequest, describeError } from "@/lib/client/api";
+import { downloadMarkdown } from "@/lib/client/exportReport";
+import { EXPORT_TEXT } from "@/lib/i18n/exportText";
 import { LANGUAGES } from "@/lib/i18n/languages";
 import type { AgentName, Project } from "@/lib/schemas/research";
 
@@ -56,7 +58,8 @@ function BackLink() {
 }
 
 export function ProjectView({ projectId }: { projectId: string }) {
-  const { t, ready, accessCode } = useApp();
+  const { t, uiLanguage, ready, accessCode } = useApp();
+  const exportText = EXPORT_TEXT[uiLanguage];
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -300,7 +303,30 @@ export function ProjectView({ projectId }: { projectId: string }) {
           <StepList project={project} activeAgent={activeAgent} />
 
           <section className="card">
-            <h2 className="mb-4 text-base font-semibold">{t.project.report}</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">{t.project.report}</h2>
+              {project.reportMarkdown && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadMarkdown(project.reportMarkdown ?? "", project.question)}
+                    className="btn-secondary py-1.5"
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                    {exportText.markdown}
+                  </button>
+                  <a
+                    href={`/project/${project.id}/print?auto=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary py-1.5"
+                  >
+                    <Printer className="h-4 w-4" aria-hidden />
+                    {exportText.pdf}
+                  </a>
+                </div>
+              )}
+            </div>
             {project.reportMarkdown ? (
               <ReportView
                 markdown={project.reportMarkdown}
