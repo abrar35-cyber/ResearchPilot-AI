@@ -8,12 +8,15 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(hashA, hashB);
 }
 
-/** Protects test endpoints that spend quota. Usage: ?token=YOUR_ADMIN_TOKEN */
+/**
+ * Optional: protects the owner-only test endpoints (?token=...).
+ * If ADMIN_TOKEN is not set, those endpoints stay disabled.
+ */
 export function requireAdmin(url: URL, config: ServerConfig): void {
   if (!config.adminToken) {
     throw new AppError(
       "admin_disabled",
-      "Set ADMIN_TOKEN in Netlify environment variables (and redeploy) to enable this endpoint.",
+      "This owner-only test endpoint is disabled (ADMIN_TOKEN is not set).",
       403
     );
   }
@@ -23,21 +26,18 @@ export function requireAdmin(url: URL, config: ServerConfig): void {
   }
 }
 
-/**
- * Protects the research API. ADMIN_TOKEN doubles as the app's access code.
- * The app sends it in the "x-access-code" header.
- */
-export function requireAccess(request: Request, config: ServerConfig): void {
-  if (!config.adminToken) {
-    throw new AppError(
-      "access_not_configured",
-      "Set ADMIN_TOKEN in Netlify environment variables (and redeploy). It is also your access code for the app.",
-      503
-    );
+// An anonymous random id created by the browser. It is not a login: it only
+// keeps each visitor's history separate.
+export const VISITOR_ID_PATTERN = /^[A-Za-z0-9-]{16,64}$/;
+
+export function isValidVisitorId(value: string): boolean {
+  return VISITOR_ID_PATTERN.test(value);
+}
+
+export function requireVisitor(request: Request): string {
+  const id = request.headers.get("x-visitor-id") ?? "";
+  if (!isValidVisitorId(id)) {
+    throw new AppError("invalid_visitor", "Missing or invalid visitor id. Reload the page and try again.", 400);
   }
-  const url = new URL(request.url);
-  const supplied = request.headers.get("x-access-code") ?? url.searchParams.get("token") ?? "";
-  if (!safeEqual(supplied, config.adminToken)) {
-    throw new AppError("unauthorized", "The access code is missing or incorrect.", 401);
-  }
+  return id;
 }
