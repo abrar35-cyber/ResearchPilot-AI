@@ -1,9 +1,12 @@
 import { BUDGET_DISPLAY_DEFAULTS as DEFAULTS } from "@/lib/constants";
 import type { BudgetLimits } from "@/lib/server/budget/budgetManager";
 
+export type ReasoningEffort = "low" | "medium" | "high";
+
 export interface ServerConfig {
   groqApiKey: string | null;
   groqModel: string;
+  groqReasoningEffort: ReasoningEffort;
   aiCallTimeoutMs: number;
   budget: BudgetLimits;
   adminToken: string | null;
@@ -37,6 +40,14 @@ function readInt(
   return value;
 }
 
+function readEffort(warnings: string[]): ReasoningEffort {
+  const raw = readString("GROQ_REASONING_EFFORT")?.toLowerCase();
+  if (!raw) return "medium";
+  if (raw === "low" || raw === "medium" || raw === "high") return raw;
+  warnings.push(`GROQ_REASONING_EFFORT="${raw}" is invalid (use low, medium or high); using medium.`);
+  return "medium";
+}
+
 /** Reads and validates environment variables. Never log or return secret values. */
 export function getConfig(): ServerConfig {
   const warnings: string[] = [];
@@ -46,7 +57,8 @@ export function getConfig(): ServerConfig {
 
   return {
     groqApiKey: readString("GROQ_API_KEY"),
-    groqModel: readString("GROQ_MODEL") ?? "llama-3.3-70b-versatile",
+    groqModel: readString("GROQ_MODEL") ?? "openai/gpt-oss-120b",
+    groqReasoningEffort: readEffort(warnings),
     aiCallTimeoutMs: readInt("AI_CALL_TIMEOUT_MS", 20000, 2000, 28000, warnings),
     budget: {
       maxAiCalls: readInt("BUDGET_MAX_AI_CALLS", DEFAULTS.maxAiCalls, 1, 100, warnings),
