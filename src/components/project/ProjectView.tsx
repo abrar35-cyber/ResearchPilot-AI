@@ -14,12 +14,17 @@ import { StatusBadge } from "@/components/project/StatusBadge";
 import { StepList } from "@/components/project/StepList";
 import { ApiError, apiRequest, describeError } from "@/lib/client/api";
 import { downloadMarkdown } from "@/lib/client/exportReport";
+import { TokenPacer } from "@/lib/client/pacing";
 import { EXPORT_TEXT } from "@/lib/i18n/exportText";
 import { LANGUAGES } from "@/lib/i18n/languages";
+import { PACING_TEXT } from "@/lib/i18n/pacingText";
 import type { AgentName, Project } from "@/lib/schemas/research";
 
 const BUSY_RETRY_LIMIT = 12;
 const BUSY_WAIT_MS = 4000;
+
+// Steps that call the AI (discovery and verification do not).
+const AI_AGENTS: readonly AgentName[] = ["planner", "evidence", "critical", "writer"];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,6 +74,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
   const [paused, setPaused] = useState(false);
   const [activeAgent, setActiveAgent] = useState<AgentName | null>(null);
   const [limits, setLimits] = useState<BudgetLimitsView | undefined>(undefined);
+  const [waitSeconds, setWaitSeconds] = useState(0);
 
   const projectRef = useRef<Project | null>(null);
   const runningRef = useRef(false);
@@ -143,10 +149,27 @@ export function ProjectView({ projectId }: { projectId: string }) {
       let resumeFlag = resume;
       let busyRetries = 0;
 
+      // Keeps AI steps under the free-tier tokens-per-minute limit.
+      const pacer = new TokenPacer();
+      pacer.record(projectRef.current?.usage.tokens ?? 0);
+
       try {
         for (;;) {
           if (stopRef.current) break;
-          setActiveAgent(projectRef.current?.nextAgent ?? "planner");
+          const agent: AgentName = projectRef.current?.nextAgent ?? "planner";
+
+          if (AI_AGENTS.includes(agent)) {
+            let wait = pacer.waitMs();
+            while (wait > 0 && !stopRef.current) {
+              setWaitSeconds(Math.ceil(wait / 1000));
+              await sleep(Math.min(1000, wait));
+              wait = pacer.waitMs();
+            }
+            setWaitSeconds(0);
+            if (stopRef.current) break;
+          }
+
+          setActiveAgent(agent);
 
           try {
             const data = await apiRequest<{ project: Project; done: boolean }>(
@@ -157,6 +180,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
             resumeFlag = false;
             busyRetries = 0;
             projectRef.current = data.project;
+            pacer.record(data.project.usage.tokens);
             setProject(data.project);
             if (data.done) break;
           } catch (caught) {
@@ -178,6 +202,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
         runningRef.current = false;
         setRunning(false);
         setActiveAgent(null);
+        setWaitSeconds(0);
       }
     },
     [projectId, accessCode]
@@ -273,6 +298,11 @@ export function ProjectView({ projectId }: { projectId: string }) {
           )}
           {running && (
             <p className="text-xs text-slate-500 dark:text-slate-400">{t.project.working}</p>
+          )}
+          {running && waitSeconds > 0 && (
+            <p className="text-xs font-medium text-brand-700 dark:text-brand-300">
+              {PACING_TEXT[uiLanguage](waitSeconds)}
+            </p>
           )}
           {!running && paused && (
             <p className="text-xs text-slate-500 dark:text-slate-400">{t.project.paused}</p>
