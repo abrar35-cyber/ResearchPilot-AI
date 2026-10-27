@@ -15,6 +15,9 @@ import { translations, type Dictionary } from "@/lib/i18n/translations";
 
 type Theme = "light" | "dark";
 
+const VISITOR_KEY = "rp-visitor-id";
+const VISITOR_PATTERN = /^[A-Za-z0-9-]{16,64}$/;
+
 interface AppContextValue {
   theme: Theme;
   toggleTheme: () => void;
@@ -22,9 +25,12 @@ interface AppContextValue {
   setUiLanguage: (code: LanguageCode) => void;
   reportLanguage: LanguageCode;
   setReportLanguage: (code: LanguageCode) => void;
-  /** The access code (ADMIN_TOKEN). Empty string means "not set". */
+  /**
+   * Despite the name, this is NOT a password any more. It is an anonymous random id
+   * created automatically in this browser, used only to keep each visitor's history
+   * separate. (The old name is kept so other files did not need to change.)
+   */
   accessCode: string;
-  setAccessCode: (code: string) => void;
   /** True once saved settings were read from the browser. */
   ready: boolean;
   t: Dictionary;
@@ -49,19 +55,22 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
-function removeStorage(key: string): void {
+function createVisitorId(): string {
   try {
-    window.localStorage.removeItem(key);
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
   } catch {
-    // ignore
+    // fall through
   }
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("light");
   const [uiLanguage, setUiLanguageState] = useState<LanguageCode>("en");
   const [reportLanguage, setReportLanguageState] = useState<LanguageCode>("en");
-  const [accessCode, setAccessCodeState] = useState("");
+  const [visitorId, setVisitorId] = useState("");
   const [ready, setReady] = useState(false);
 
   // Load saved settings once, after the first render.
@@ -74,7 +83,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const savedReport = readStorage(STORAGE_KEYS.reportLanguage);
     if (isLanguageCode(savedReport)) setReportLanguageState(savedReport);
 
-    setAccessCodeState(readStorage(STORAGE_KEYS.accessCode) ?? "");
+    let id = readStorage(VISITOR_KEY);
+    if (!id || !VISITOR_PATTERN.test(id)) {
+      id = createVisitorId();
+      writeStorage(VISITOR_KEY, id);
+    }
+    setVisitorId(id);
 
     setReady(true);
   }, []);
@@ -105,13 +119,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     writeStorage(STORAGE_KEYS.reportLanguage, code);
   }, []);
 
-  const setAccessCode = useCallback((code: string) => {
-    const trimmed = code.trim();
-    setAccessCodeState(trimmed);
-    if (trimmed === "") removeStorage(STORAGE_KEYS.accessCode);
-    else writeStorage(STORAGE_KEYS.accessCode, trimmed);
-  }, []);
-
   const value = useMemo<AppContextValue>(
     () => ({
       theme,
@@ -120,24 +127,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUiLanguage,
       reportLanguage,
       setReportLanguage,
-      accessCode,
-      setAccessCode,
+      accessCode: visitorId,
       ready,
       t: translations[uiLanguage],
       dir,
     }),
-    [
-      theme,
-      toggleTheme,
-      uiLanguage,
-      setUiLanguage,
-      reportLanguage,
-      setReportLanguage,
-      accessCode,
-      setAccessCode,
-      ready,
-      dir,
-    ]
+    [theme, toggleTheme, uiLanguage, setUiLanguage, reportLanguage, setReportLanguage, visitorId, ready, dir]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
