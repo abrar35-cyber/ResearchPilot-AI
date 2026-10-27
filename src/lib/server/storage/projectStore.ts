@@ -6,11 +6,11 @@ import {
   type Project,
   type ProjectSummary,
 } from "@/lib/schemas/research";
+import { isValidVisitorId } from "@/lib/server/adminAuth";
 import { AppError, NotFoundError } from "@/lib/server/errors";
 import { openStore, withStorageErrors, type BlobStore } from "@/lib/server/storage/blobs";
 
 const STORE_NAME = "rp-projects";
-const INDEX_KEY = "index/summaries";
 const MAX_INDEX_ENTRIES = 100;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -20,6 +20,10 @@ export function newProjectId(): string {
 
 export function isValidProjectId(id: string): boolean {
   return ID_PATTERN.test(id);
+}
+
+function indexKey(ownerId: string): string {
+  return `index/owner/${ownerId}`;
 }
 
 function toSummary(project: Project): ProjectSummary {
@@ -33,18 +37,18 @@ function toSummary(project: Project): ProjectSummary {
   };
 }
 
-async function readIndex(store: BlobStore): Promise<ProjectSummary[]> {
-  const data: unknown = await store.get(INDEX_KEY, { type: "json" });
+async function readIndex(store: BlobStore, ownerId: string): Promise<ProjectSummary[]> {
+  const data: unknown = await store.get(indexKey(ownerId), { type: "json" });
   const parsed = z.array(ProjectSummarySchema).safeParse(data);
   return parsed.success ? parsed.data : [];
 }
 
-async function updateIndex(store: BlobStore, summary: ProjectSummary): Promise<void> {
-  const current = await readIndex(store);
+async function updateIndex(store: BlobStore, ownerId: string, summary: ProjectSummary): Promise<void> {
+  const current = await readIndex(store, ownerId);
   const next = [summary, ...current.filter((item) => item.id !== summary.id)]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, MAX_INDEX_ENTRIES);
-  await store.setJSON(INDEX_KEY, next);
+  await store.setJSON(indexKey(ownerId), next);
 }
 
 /** Validates and saves a project (used after every agent step to keep partial progress). */
@@ -58,7 +62,9 @@ export async function saveProject(project: Project): Promise<Project> {
   return withStorageErrors(async () => {
     const store = openStore(STORE_NAME);
     await store.setJSON(`projects/${toSave.id}`, toSave);
-    await updateIndex(store, toSummary(toSave));
+    if (isValidVisitorId(toSave.ownerId)) {
+      await updateIndex(store, toSave.ownerId, toSummary(toSave));
+    }
     return toSave;
   });
 }
@@ -79,6 +85,8 @@ export async function getProject(id: string): Promise<Project> {
   });
 }
 
-export async function listProjectSummaries(): Promise<ProjectSummary[]> {
-  return withStorageErrors(async () => readIndex(openStore(STORE_NAME)));
+/** Only the visitor's own projects are listed. */
+export async function listProjectSummaries(ownerId: string): Promise<ProjectSummary[]> {
+  if (!isValidVisitorId(ownerId)) return [];
+  return withStorageErrors(async () => readIndex(openStore(STORE_NAME), ownerId));
 }
