@@ -31,17 +31,18 @@ const CounterSchema = z.object({
   count: z.number().int().nonnegative(),
 });
 
-// Netlify supplies this header with the visitor's connection IP.
+/**
+ * Trust only Netlify's connection IP header.
+ *
+ * Do not use x-forwarded-for as a fallback because clients may be able
+ * to supply or manipulate that header.
+ */
 function clientIp(request: Request): string {
-  const netlify = request.headers.get("x-nf-client-connection-ip");
+  const netlifyIp = request.headers
+    .get("x-nf-client-connection-ip")
+    ?.trim();
 
-  if (netlify) return netlify.trim();
-
-  const forwarded = request.headers.get("x-forwarded-for");
-
-  if (forwarded) return forwarded.split(",")[0].trim();
-
-  return "unknown";
+  return netlifyIp || "unknown";
 }
 
 async function readCount(
@@ -67,8 +68,8 @@ async function readCount(
  *
  * These counters reset at midnight UTC.
  *
- * Netlify Blobs does not provide an atomic increment here. Two requests
- * arriving at exactly the same time can therefore cause a small overshoot.
+ * Netlify Blobs does not provide an atomic increment here. Concurrent
+ * requests can still cause a small overshoot.
  */
 export async function reserveRun(request: Request): Promise<void> {
   const dailyRuns = readLimit(
@@ -123,7 +124,6 @@ export async function reserveRun(request: Request): Promise<void> {
       store.setJSON(globalKey, {
         count: globalCount + 1,
       }),
-
       store.setJSON(ipKey, {
         count: ipCount + 1,
       }),
