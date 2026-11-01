@@ -244,7 +244,7 @@ export async function groqChat(
   const headroom = effort ? REASONING_HEADROOM[effort] : 0;
 
   const maxCompletionTokens = (options.maxOutputTokens ?? 1024) + headroom;
-  const promptTokens = estimateTokens(options.messages.map((m) => m.content).join("\n"));
+const promptTokens = estimateTokens(JSON.stringify(options.messages)) + 256;
   const settings: RequestSettings = {
     maxCompletionTokens,
     effort,
