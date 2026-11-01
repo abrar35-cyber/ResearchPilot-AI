@@ -1,3 +1,4 @@
+
 import type { BudgetUsage } from "@/lib/schemas/research";
 import { AppError } from "@/lib/server/errors";
 
@@ -21,20 +22,35 @@ export class BudgetExceededError extends AppError {
   }
 }
 
-// Rough estimate (also covers Urdu/Sindhi, which use more tokens per character).
+/**
+ * Conservative upper-bound estimate for text size.
+ *
+ * UTF-8 byte length is intentionally used instead of character count.
+ * This is safer for Urdu, Sindhi, Roman Urdu and other multilingual prompts.
+ * A small additional allowance for provider message framing is added by
+ * groqClient.ts.
+ *
+ * This is a safety estimate, not an exact tokenizer.
+ */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3);
+  return new TextEncoder().encode(text).length;
 }
 
 /**
- * Tracks usage for ONE research run. A run spans many short requests, so create
- * a new BudgetManager per request from the saved usage, then save snapshot().
- * Limits are hard: every AI request must pass assertCanCallAi() first.
+ * Tracks usage for ONE research run.
+ *
+ * Every AI request must reserve its maximum estimated usage before it starts.
+ * After the provider responds, the reservation is replaced with reported usage.
  */
 export class BudgetManager {
   private aiCalls: number;
   private tokens: number;
   private retries: number;
+
+  private reservedCalls = 0;
+  private reservedTokens = 0;
+  private pendingReservations: number[] = [];
+
   private readonly baseSeconds: number;
   private readonly startedAt = Date.now();
   private readonly limits: BudgetLimits;
@@ -55,47 +71,85 @@ export class BudgetManager {
     return Math.max(0, this.limits.maxSeconds - this.elapsedSeconds());
   }
 
-  /** Call BEFORE every AI request. Throws BudgetExceededError if it must not run. */
+  /**
+   * Reserve one call and its maximum estimated token usage BEFORE contacting
+   * the provider. This also prevents concurrent calls using the same manager
+   * from spending the same remaining budget.
+   */
   assertCanCallAi(estimatedTokens: number, purpose: BudgetPurpose): void {
-    const { maxAiCalls, maxTokens, maxSeconds, reportReservePercent } = this.limits;
+    const {
+      maxAiCalls,
+      maxTokens,
+      maxSeconds,
+      reportReservePercent,
+    } = this.limits;
+
+    const requestedTokens = Math.max(0, Math.ceil(estimatedTokens));
 
     if (this.elapsedSeconds() >= maxSeconds) {
-      throw new BudgetExceededError("time", `Stopped: the time limit of ${maxSeconds} seconds was reached.`);
+      throw new BudgetExceededError(
+        "time",
+        `Stopped: the time limit of ${maxSeconds} seconds was reached.`
+      );
     }
 
-    // Work steps may not touch the share reserved for writing the report.
+    // Work steps cannot consume the budget reserved for the final report.
     const reserve = purpose === "report" ? 0 : reportReservePercent / 100;
+
     const callCeiling = maxAiCalls - Math.ceil(maxAiCalls * reserve);
     const tokenCeiling = maxTokens - Math.floor(maxTokens * reserve);
 
-    if (this.aiCalls + 1 > callCeiling) {
-      const reserved = this.aiCalls + 1 <= maxAiCalls;
+    if (this.aiCalls + this.reservedCalls + 1 > callCeiling) {
+      const reportReservationAvailable =
+        this.aiCalls + this.reservedCalls + 1 <= maxAiCalls;
+
       throw new BudgetExceededError(
         "ai_calls",
-        reserved
+        reportReservationAvailable
           ? "Stopped: the remaining AI calls are reserved for writing the report."
           : `Stopped: the AI call limit of ${maxAiCalls} was reached.`
       );
     }
 
-    if (this.tokens + estimatedTokens > tokenCeiling) {
-      const reserved = this.tokens + estimatedTokens <= maxTokens;
+    if (
+      this.tokens + this.reservedTokens + requestedTokens >
+      tokenCeiling
+    ) {
+      const reportReservationAvailable =
+        this.tokens + this.reservedTokens + requestedTokens <= maxTokens;
+
       throw new BudgetExceededError(
         "tokens",
-        reserved
+        reportReservationAvailable
           ? "Stopped: the remaining tokens are reserved for writing the report."
           : `Stopped: the token limit of ${maxTokens} was reached.`
       );
     }
+
+    this.reservedCalls += 1;
+    this.reservedTokens += requestedTokens;
+    this.pendingReservations.push(requestedTokens);
   }
 
-  /** Record every attempt, including failed ones (use 0 tokens), so quotas are never bypassed. */
+  /**
+   * Reconcile one completed attempt with actual provider usage.
+   * Failed attempts are also counted as calls.
+   */
   recordAiCall(tokensUsed: number): void {
+    const reservation = this.pendingReservations.shift();
+
+    if (reservation !== undefined) {
+      this.reservedCalls = Math.max(0, this.reservedCalls - 1);
+      this.reservedTokens = Math.max(
+        0,
+        this.reservedTokens - reservation
+      );
+    }
+
     this.aiCalls += 1;
-    this.tokens += Math.max(0, Math.round(tokensUsed));
+    this.tokens += Math.max(0, Math.ceil(tokensUsed));
   }
 
-  /** Uses up one retry, or throws if the run has none left. */
   consumeRetry(context: string): void {
     if (this.retries >= this.limits.maxRetries) {
       throw new BudgetExceededError(
@@ -103,6 +157,7 @@ export class BudgetManager {
         `Stopped: the retry limit of ${this.limits.maxRetries} was reached after: ${context}`
       );
     }
+
     this.retries += 1;
   }
 
