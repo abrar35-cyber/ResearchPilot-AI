@@ -21,18 +21,15 @@ async function checkStorage(): Promise<Record<string, unknown>> {
       const back: unknown = await store.get("ping", { type: "json" });
 
       if (!back || (back as { stamp?: string }).stamp !== stamp) {
-        throw new Error("Wrote a test value but could not read it back.");
+        throw new Error("Storage check failed.");
       }
     });
 
     return { ok: true };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Storage check failed.",
+      message: "Storage check failed. Review the server configuration.",
     };
   }
 }
@@ -81,34 +78,38 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const check = url.searchParams.get("check");
-    const config = getConfig();
 
-    const body: Record<string, unknown> = {
-      ok: true,
-      time: new Date().toISOString(),
-      config: {
-        groqConfigured: Boolean(config.groqApiKey),
-        groqModel: config.groqModel,
-        openAlexConfigured: Boolean(config.openAlexApiKey),
-        adminTokenConfigured: Boolean(config.adminToken),
-        manualBlobsConfig: Boolean(config.blobs),
-        aiCallTimeoutMs: config.aiCallTimeoutMs,
-        budget: config.budget,
-        warnings: config.warnings,
-      },
-    };
+    // Public endpoint: return only basic availability information.
+    if (!check) {
+      return jsonOk({
+        ok: true,
+        time: new Date().toISOString(),
+      });
+    }
+
+    // Detailed diagnostics are private.
+    const config = getConfig();
+    requireAdmin(request, config);
 
     if (check === "storage") {
-      requireAdmin(request, config);
-      body.storage = await checkStorage();
+      return jsonOk({
+        ok: true,
+        storage: await checkStorage(),
+      });
     }
 
     if (check === "ai") {
-      requireAdmin(request, config);
-      body.ai = await checkAi(config);
+      return jsonOk({
+        ok: true,
+        ai: await checkAi(config),
+      });
     }
 
-    return jsonOk(body);
+    throw new AppError(
+      "invalid_check",
+      "Unsupported health check. Use storage or ai.",
+      400
+    );
   } catch (error) {
     return handleError(error);
   }
