@@ -1,3 +1,4 @@
+
 import { createHash, timingSafeEqual } from "node:crypto";
 import { AppError } from "@/lib/server/errors";
 import type { ServerConfig } from "@/lib/server/env";
@@ -9,10 +10,16 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Optional: protects the owner-only test endpoints (?token=...).
- * If ADMIN_TOKEN is not set, those endpoints stay disabled.
+ * Protects owner-only test endpoints.
+ * The admin token must be sent in the Authorization header:
+ * Authorization: Bearer YOUR_ADMIN_TOKEN
+ *
+ * If ADMIN_TOKEN is not configured, these endpoints stay disabled.
  */
-export function requireAdmin(url: URL, config: ServerConfig): void {
+export function requireAdmin(
+  request: Request,
+  config: ServerConfig
+): void {
   if (!config.adminToken) {
     throw new AppError(
       "admin_disabled",
@@ -20,9 +27,13 @@ export function requireAdmin(url: URL, config: ServerConfig): void {
       403
     );
   }
-  const token = url.searchParams.get("token") ?? "";
-  if (!safeEqual(token, config.adminToken)) {
-    throw new AppError("forbidden", "Invalid token.", 403);
+
+  const authorization = request.headers.get("authorization") ?? "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim() ?? "";
+
+  if (!token || !safeEqual(token, config.adminToken)) {
+    throw new AppError("forbidden", "Invalid or missing admin token.", 403);
   }
 }
 
@@ -36,8 +47,14 @@ export function isValidVisitorId(value: string): boolean {
 
 export function requireVisitor(request: Request): string {
   const id = request.headers.get("x-visitor-id") ?? "";
+
   if (!isValidVisitorId(id)) {
-    throw new AppError("invalid_visitor", "Missing or invalid visitor id. Reload the page and try again.", 400);
+    throw new AppError(
+      "invalid_visitor",
+      "Missing or invalid visitor id. Reload the page and try again.",
+      400
+    );
   }
+
   return id;
 }
