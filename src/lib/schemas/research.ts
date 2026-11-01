@@ -11,10 +11,17 @@ export const AGENT_NAMES = [
   "verification",
   "writer",
 ] as const;
+
 export const AgentNameSchema = z.enum(AGENT_NAMES);
 export type AgentName = z.infer<typeof AgentNameSchema>;
 
-export const ProjectStatusSchema = z.enum(["created", "running", "completed", "stopped", "failed"]);
+export const ProjectStatusSchema = z.enum([
+  "created",
+  "running",
+  "completed",
+  "stopped",
+  "failed",
+]);
 export type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
 
 export const StopReasonSchema = z.enum([
@@ -54,7 +61,6 @@ export const SourceSchema = z.object({
   year: z.number().int().nullable(),
   provider: z.enum(["duckduckgo", "openalex", "crossref"]),
   snippet: z.string().nullable(),
-  // Longer page text read by the Evidence Analyst (only for short web snippets).
   excerpt: z.string().nullable().optional(),
   retrievedAt: z.string(),
   verification: z.enum(["unverified", "verified", "failed"]),
@@ -69,8 +75,6 @@ export const PlanSchema = z.object({
 });
 export type Plan = z.infer<typeof PlanSchema>;
 
-// Every evidence item points to a source and holds a quote that was checked
-// to appear in that source's text.
 export const EvidenceItemSchema = z.object({
   id: z.string(),
   sourceId: z.string(),
@@ -125,6 +129,7 @@ export const ProjectSchema = z.object({
   stopReason: StopReasonSchema.nullable(),
   stopMessage: z.string().nullable(),
   reportMarkdown: z.string().nullable(),
+
   // Orchestrator state
   plan: PlanSchema.nullable().default(null),
   searchedQueries: z.array(z.string()).default([]),
@@ -136,6 +141,11 @@ export const ProjectSchema = z.object({
   critique: CritiqueSchema.nullable().default(null),
   audit: AuditSchema.nullable().default(null),
   lockedUntil: z.string().nullable().default(null),
+
+  // UTC timestamp of the most recent daily quota reservation.
+  // Optional/default keeps previously saved projects compatible.
+  quotaReservedAt: z.string().nullable().default(null),
+
   ownerId: z.string().default(""),
 });
 export type Project = z.infer<typeof ProjectSchema>;
@@ -155,7 +165,10 @@ export const CreateProjectInputSchema = z.object({
     .string()
     .trim()
     .min(10, "The question must be at least 10 characters long.")
-    .max(MAX_QUESTION_LENGTH, `The question must be at most ${MAX_QUESTION_LENGTH} characters long.`),
+    .max(
+      MAX_QUESTION_LENGTH,
+      `The question must be at most ${MAX_QUESTION_LENGTH} characters long.`
+    ),
   reportLanguage: LanguageCodeSchema.default("en"),
   maxSources: z
     .number()
