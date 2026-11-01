@@ -8,7 +8,6 @@ import { detectLanguage } from "@/lib/i18n/detectLanguage";
 import { requireVisitor } from "@/lib/server/adminAuth";
 import { AppError } from "@/lib/server/errors";
 import { handleError, jsonOk } from "@/lib/server/http";
-import { reserveRun } from "@/lib/server/limits";
 import {
   listProjectSummaries,
   newProjectId,
@@ -23,27 +22,31 @@ export async function GET(request: Request) {
   try {
     const ownerId = requireVisitor(request);
     const projects = await listProjectSummaries(ownerId);
+
     return jsonOk({ projects });
   } catch (error) {
     return handleError(error);
   }
 }
 
+// Creates a draft. The daily research quota is NOT consumed here.
 export async function POST(request: Request) {
   try {
     const ownerId = requireVisitor(request);
 
     let body: unknown;
+
     try {
       body = await request.json();
     } catch {
-      throw new AppError("invalid_json", "The request body must be valid JSON.", 400);
+      throw new AppError(
+        "invalid_json",
+        "The request body must be valid JSON.",
+        400
+      );
     }
 
     const input = CreateProjectInputSchema.parse(body);
-
-    // Daily limits protect the shared free quotas. Counted only for valid requests.
-    await reserveRun(request);
 
     const detected = detectLanguage(input.question);
     const now = new Date().toISOString();
@@ -84,10 +87,12 @@ export async function POST(request: Request) {
       critique: null,
       audit: null,
       lockedUntil: null,
+      quotaReservedAt: null,
       ownerId,
     };
 
     const saved = await saveProject(project);
+
     return jsonOk({ project: saved }, 201);
   } catch (error) {
     return handleError(error);
