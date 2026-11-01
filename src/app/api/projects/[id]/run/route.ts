@@ -1,10 +1,13 @@
-
 import { getConfig } from "@/lib/server/env";
 import { handleError, jsonOk } from "@/lib/server/http";
 import { requireVisitor } from "@/lib/server/adminAuth";
 import { NotFoundError } from "@/lib/server/errors";
+import { reserveRun } from "@/lib/server/limits";
 import { runNextStep } from "@/lib/server/orchestrator";
-import { getProject } from "@/lib/server/storage/projectStore";
+import {
+  getProject,
+  saveProject,
+} from "@/lib/server/storage/projectStore";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,11 +36,33 @@ export async function POST(
       // An empty body is allowed.
     }
 
-    const project = await getProject(params.id);
+    let project = await getProject(params.id);
 
     // Only the project owner can execute its research workflow.
     if (project.ownerId !== ownerId) {
       throw new NotFoundError("Project");
+    }
+
+    const canStartOrResume =
+      project.status === "created" ||
+      project.status === "running" ||
+      (resume &&
+        project.status === "stopped" &&
+        project.stopReason === "provider_error");
+
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    const reservedDay = project.quotaReservedAt?.slice(0, 10);
+
+    // Reserve once per project per UTC day.
+    // Repeated agent-step requests on the same day do not consume
+    // additional daily project slots.
+    if (canStartOrResume && reservedDay !== todayUtc) {
+      await reserveRun(request, project.id);
+
+      project = await saveProject({
+        ...project,
+        quotaReservedAt: new Date().toISOString(),
+      });
     }
 
     const updated = await runNextStep(project, config, { resume });
