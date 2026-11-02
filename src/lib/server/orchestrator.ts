@@ -22,6 +22,7 @@ import {
   BudgetManager,
 } from "@/lib/server/budget/budgetManager";
 import type { ServerConfig } from "@/lib/server/env";
+import { reserveRun } from "@/lib/server/limits";
 import { buildEvidenceOnlyReport } from "@/lib/server/reports/buildReport";
 import { truncate } from "@/lib/server/search/normalize";
 import {
@@ -247,22 +248,18 @@ function handleFailure(
 /**
  * Runs exactly ONE agent step.
  *
- * A separate atomic lock record prevents concurrent requests from
- * running the same project step at the same time.
- *
- * The latest project is reloaded only after the lock is acquired,
- * avoiding decisions based on stale project data.
+ * The project lock is acquired before reloading or modifying project state.
+ * Daily quota reservation also happens while this lock is held.
  */
 export async function runNextStep(
   input: Project,
   config: ServerConfig,
-  options: { resume?: boolean } = {}
+  options: { resume?: boolean; request: Request }
 ): Promise<Project> {
   const lock = await acquireProjectLock(input.id);
 
   try {
     // Always reload after claiming the lock.
-    // The route may have passed an outdated project snapshot.
     let project = await getProject(input.id);
 
     if (
@@ -280,7 +277,30 @@ export async function runNextStep(
       }
     }
 
-    // The user may retry after a provider problem.
+    const canStartOrResume =
+      project.status === "created" ||
+      project.status === "running" ||
+      (options.resume &&
+        project.status === "stopped" &&
+        project.stopReason === "provider_error");
+
+    // Reserve the daily slot only after acquiring the project lock.
+    // Repeated steps on the same UTC day do not consume extra slots.
+    if (canStartOrResume) {
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      const reservedDay = project.quotaReservedAt?.slice(0, 10);
+
+      if (reservedDay !== todayUtc) {
+        await reserveRun(options.request, project.id);
+
+        project = await saveProject({
+          ...project,
+          quotaReservedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Retry after a provider problem.
     if (
       options.resume &&
       project.status === "stopped" &&
@@ -314,7 +334,6 @@ export async function runNextStep(
       }
     );
 
-    // Confirm ownership immediately before saving the running state.
     await assertProjectLock(lock);
     project = await saveProject(project);
 
@@ -337,8 +356,7 @@ export async function runNextStep(
       result = handleFailure(project, agent, error);
     }
 
-    // If the lease expired or another request took ownership,
-    // do not allow this request to overwrite that request's result.
+    // Prevent a request that lost its lease from saving stale results.
     await assertProjectLock(lock);
 
     return await saveProject({
@@ -347,8 +365,6 @@ export async function runNextStep(
       lockedUntil: null,
     });
   } finally {
-    // Releases only this request's lock.
-    // A newer owner's lock is never intentionally released.
     await releaseProjectLock(lock);
   }
 }
